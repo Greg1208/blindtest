@@ -2537,17 +2537,17 @@ var qrcode = function() {
   {a:"Louise Attaque",t:"J't'emmène au vent",y:1997,n:"Leur premier album s'est vendu à plus de deux millions d'exemplaires, presque sans passage télé.",yt:"BRTDC9Z5UdE"},
   {a:"Stromae",t:"Alors on danse",y:2009,n:"Le titre a fait danser toute l'Europe et a été numéro 1 dans plusieurs pays.",yt:"VHoT4N43jK8"}
  ]},
- {name:"Manche 5 · Années 90 – 2000", rule:"Pièges sonores : passez l'extrait accéléré ou à l'envers si vous voulez corser. 2 points.", tracks:[
+ {name:"Manche 5 · Années 90 – 2000", rule:"Pièges sonores : les effets ×1.5 et ×2 sont prévus d'office sur certains titres (la console vous l'indique). 2 points la bonne réponse.", tracks:[
   {a:"Nirvana",t:"Smells Like Teen Spirit",y:1991,n:"Le titre vient d'un graffiti d'une amie : « Kurt smells like Teen Spirit ». Teen Spirit était… une marque de déodorant.",yt:"hTWKbfoikeg"},
-  {a:"Britney Spears",t:"...Baby One More Time",y:1998,n:"Écrite par Max Martin, la chanson avait d'abord été proposée au groupe TLC, qui l'a refusée.",yt:"C-u5WLJ9Yk4"},
-  {a:"Spice Girls",t:"Wannabe",y:1996,n:"Leur premier single. Personne n'a jamais vraiment su ce que veut dire « zigazig ah ».",yt:"gJLIiF15wjQ"},
+  {a:"Britney Spears",t:"...Baby One More Time",y:1998,n:"Écrite par Max Martin, la chanson avait d'abord été proposée au groupe TLC, qui l'a refusée.",yt:"C-u5WLJ9Yk4",fx:1.5},
+  {a:"Spice Girls",t:"Wannabe",y:1996,n:"Leur premier single. Personne n'a jamais vraiment su ce que veut dire « zigazig ah ».",yt:"gJLIiF15wjQ",fx:2},
   {a:"Las Ketchup",t:"The Ketchup Song (Aserejé)",y:2002,n:"Le refrain imite phonétiquement « Rapper's Delight » du Sugarhill Gang, chanté par quelqu'un qui ne parle pas anglais.",yt:"CCTZDXQnrm0"},
-  {a:"Eminem",t:"Lose Yourself",y:2002,n:"Premier morceau de rap à remporter l'Oscar de la meilleure chanson originale (film 8 Mile).",yt:"_Yhyp-_hX2s"},
+  {a:"Eminem",t:"Lose Yourself",y:2002,n:"Premier morceau de rap à remporter l'Oscar de la meilleure chanson originale (film 8 Mile).",yt:"_Yhyp-_hX2s",fx:1.5},
   {a:"Daft Punk",t:"One More Time",y:2000,n:"La voix est celle du chanteur américain Romanthony, transformée à l'Auto-Tune.",yt:"FGBhQbmPwH8"},
-  {a:"Gala",t:"Freed from Desire",y:1996,n:"Un tube dance italien revenu en force dans les stades de foot plus de 20 ans après.",yt:"p3l7fgvrEKM"},
-  {a:"Shakira",t:"Hips Don't Lie",y:2006,n:"En duo avec Wyclef Jean. Un des singles les plus vendus des années 2000.",yt:"DUT5rEU6pqM"},
-  {a:"Outkast",t:"Hey Ya!",y:2003,n:"Après les paroles « shake it like a Polaroid picture », Polaroid a précisé qu'il ne fallait surtout pas secouer ses photos.",yt:"PWgvGjAhvIw"},
-  {a:"Bob Sinclar",t:"Love Generation",y:2005,n:"Son sifflement est reconnaissable dès la première seconde : idéal pour la manche Intro express.",yt:"V_8BRQVpTzY"}
+  {a:"Gala",t:"Freed from Desire",y:1996,n:"Un tube dance italien revenu en force dans les stades de foot plus de 20 ans après.",yt:"p3l7fgvrEKM",fx:2},
+  {a:"Shakira",t:"Hips Don't Lie",y:2006,n:"En duo avec Wyclef Jean. Un des singles les plus vendus des années 2000.",yt:"DUT5rEU6pqM",fx:1.5},
+  {a:"Outkast",t:"Hey Ya!",y:2003,n:"Après les paroles « shake it like a Polaroid picture », Polaroid a précisé qu'il ne fallait surtout pas secouer ses photos.",yt:"PWgvGjAhvIw",fx:2},
+  {a:"Bob Sinclar",t:"Love Generation",y:2005,n:"Son sifflement est reconnaissable dès la première seconde : idéal pour la manche Intro express.",yt:"V_8BRQVpTzY",fx:1.5}
  ]},
  {name:"Manche 6 · Grande finale", rule:"Face à face : 1 candidat par équipe finaliste au buzzer. Le premier à 5 points gagne.", tracks:[
   {a:"ABBA",t:"Dancing Queen",y:1976,n:"Interprétée pour la première fois en public lors d'un gala télévisé en l'honneur du roi de Suède, la veille de son mariage.",yt:"xFrGuyw1V8s"},
@@ -2918,11 +2918,12 @@ function Host(){
     $('#tabs').innerHTML=PLAYLIST.map((r,i)=>`<button class="${i===st.round?'on':''}" data-r="${i}">M${i+1}</button>`).join('');
     $('#rule').innerHTML=`<b>${esc(R.name)}</b><br>${esc(R.rule)}`;
     const ytS='https://www.youtube.com/results?search_query='+encodeURIComponent(T.a+' '+T.t);
-    const ip=st.introPts;
+    const ip=st.introPts, fx=T.fx||null;
     $('#fiche').innerHTML=`<div class="hrow" style="justify-content:space-between"><span class="pill">Titre ${st.track+1} / ${R.tracks.length}</span><span class="pill srcb">${hasMp3?'🎵 MP3':id?'▶ YouTube <span id="prep">'+prepLabel()+'</span>':'⚠️ Pas de musique'}</span><span class="pill">${st.revealed?'✅ Révélé':'🙈 Masqué'} sur la TV</span></div>
       <div class="${peek?'':'hidden'}"><div class="ans">${esc(T.t)}</div><div style="font-weight:700">${esc(T.a)} · ${T.y}</div><div class="mut" style="font-size:.9rem;margin-top:6px">💡 ${esc(T.n)}</div></div>
       <div class="hrow"><button class="btn sm" id="pk">${peek?'🙈 Masquer':'👁 Voir la fiche'}</button></div>
-      <div class="hrow"><button class="btn rose" id="mgo">▶ Extrait + buzzers</button><button class="btn sm" id="mpl">▶ Lecture</button><button class="btn sm" id="mpa">⏸ Pause</button><button class="btn sm" id="mre">⏯ Reprendre</button><button class="btn sm" id="mst">⏹ Stop</button></div>
+      ${fx?`<div class="rule" style="font-size:1rem;font-weight:800;background:#e8457f30;color:#fff">⚡ Effet prévu : version accélérée ×${fx} — validez avec +2</div>`:''}
+      <div class="hrow"><button class="btn rose" id="mgo">▶ Extrait${fx?' ×'+fx:''} + buzzers</button><button class="btn sm" id="mpl">▶ Lecture</button><button class="btn sm" id="mpa">⏸ Pause</button><button class="btn sm" id="mre">⏯ Reprendre</button><button class="btn sm" id="mst">⏹ Stop</button></div>
       <div class="hrow"><span class="mut" style="font-size:.8rem">Intro express :</span>${[1,3,5].map(n=>`<button class="btn sm ${ip&&ip.n===n?'hl':''}" data-ie="${n}">${n} s</button>`).join('')}<span class="mut" style="font-size:.8rem">Effets :</span><button class="btn sm" data-fx="1.5">×1.5</button><button class="btn sm" data-fx="2">×2</button><button class="btn sm" data-fx="rev" ${hasMp3?'':'disabled title="MP3 nécessaire"'}>À l'envers</button></div>
       <div class="mut" id="yterr" style="font-size:.8rem;color:#ffb3b3"></div>
       <div class="hrow"><button class="btn or" id="rev">🥁 Révéler avec suspense</button><button class="btn sm" id="rev2">Révéler</button><button class="btn sm" id="clip" ${id?'':'disabled'}>📺 Clip à la TV</button></div>
@@ -2932,10 +2933,10 @@ function Host(){
         <div class="hrow"><a class="btn sm" href="${ytS}" target="_blank" rel="noopener">🔎 Chercher sur YouTube</a><label class="btn sm" style="cursor:pointer">🎵 MP3 pour ce titre<input type="file" id="c1" accept="audio/*" hidden></label></div></details>`;
     $('#tlist').innerHTML=R.tracks.map((x,i)=>`<button class="${i===st.track?'on':''}" data-k="${i}"><b>${i+1}.</b><span class="${peek?'':'masked'}">${esc(x.a)} – ${esc(x.t)}</span>${MP3.files[st.round+'-'+i]?' 🎵':''}</button>`).join('');
     $('#pk').onclick=()=>{ peek=!peek; renderPlaylist(); };
-    $('#mgo').onclick=()=>{ st.introPts=null; music('play'); openBuzz(); };
+    $('#mgo').onclick=()=>{ st.introPts=fx?{n:0,pts:2,fx}:null; music('play',fx?{rate:fx}:{}); openBuzz(); };
     $('#mpl').onclick=()=>music('play'); $('#mpa').onclick=()=>music('pause'); $('#mre').onclick=()=>music('resume'); $('#mst').onclick=()=>music('stop');
     document.querySelectorAll('[data-ie]').forEach(b=>b.onclick=()=>{ const n=+b.dataset.ie; st.introPts={n,pts:{1:3,3:2,5:1}[n]}; music('play',{dur:n}); if(st.status!=='open'&&st.status!=='buzzed') openBuzz(true); else commit(); });
-    document.querySelectorAll('[data-fx]').forEach(b=>b.onclick=()=>{ const v=b.dataset.fx; if(v==='rev') music('play',{rev:true}); else music('play',{rate:+v}); if(st.status!=='open') openBuzz(true); });
+    document.querySelectorAll('[data-fx]').forEach(b=>b.onclick=()=>{ const v=b.dataset.fx; st.introPts={n:0,pts:2,fx:v==='rev'?'rev':+v}; if(v==='rev') music('play',{rev:true}); else music('play',{rate:+v}); if(st.status!=='open') openBuzz(true); else commit(); });
     $('#rev').onclick=()=>{ music('pause'); SFX.drumroll(2.2); setTimeout(()=>{ st.revealed=true; commit(); SFX.correct(); clip(); },2200); };
     $('#rev2').onclick=()=>{ st.revealed=true; commit(); clip(); };
     $('#clip').onclick=clip;
@@ -3003,7 +3004,7 @@ function Host(){
       else if(st.status==='lobby') html=`<div class="big">En attente des joueurs</div><div class="mut">${Object.values(st.players).filter(p=>p.on).length} connecté(s) · Faites scanner le QR code puis lancez le tirage au sort</div>`;
       else html=`<div class="big">Buzzers fermés</div><div class="mut">Cliquez « ▶ Extrait + buzzers » dans la playlist</div>`;
       const sug=st.introPts?st.introPts.pts:null;
-      if(st.status==='buzzed') a.innerHTML=[1,2,3].map(n=>`<button class="btn ok ${sug===n?'hl':''}" data-g="${n}">✓ +${n}${sug===n?' (intro)':''}</button>`).join('')+`<button class="btn ko" id="bad">✗ Mauvaise → vol</button><button class="btn" id="cl">Annuler</button>`;
+      if(st.status==='buzzed') a.innerHTML=[1,2,3].map(n=>`<button class="btn ok ${sug===n?'hl':''}" data-g="${n}">✓ +${n}${sug===n?(st.introPts.fx?' (effet)':' (intro)'):''}</button>`).join('')+`<button class="btn ko" id="bad">✗ Mauvaise → vol</button><button class="btn" id="cl">Annuler</button>`;
       else a.innerHTML=`<button class="btn rose" id="op">🔓 Ouvrir les buzzers</button><button class="btn" id="cl" ${st.status==='open'?'':'disabled'}>🔒 Fermer</button>`;
       a.querySelectorAll('[data-g]').forEach(x=>x.onclick=()=>good(+x.dataset.g));
       if($('#bad')) $('#bad').onclick=bad; if($('#op')) $('#op').onclick=()=>openBuzz(); if($('#cl')) $('#cl').onclick=closeBuzz;
@@ -3088,7 +3089,7 @@ function Host(){
     bc.postMessage({type:'state',status:st.status,screen:st.screen,teams:st.teams.map((t,i)=>({name:t.name,score:t.score,color:TEAMC[i].c})),buzz:st.buzz?{name:st.buzz.name,team:st.buzz.team}:null,blocked:st.blocked,timer:timerLeftNow(),
       round:R.name,trackNo:st.track+1,trackTot:R.tracks.length,answer:st.revealed?{t:T.t,a:T.a,y:T.y}:null,joinURL:joinURL(),
       names:Object.values(st.players).filter(p=>p.on).map(p=>p.name),draw:st.drawOrder.map(k=>st.players[k]?{name:st.players[k].name,team:st.players[k].team}:null).filter(Boolean),drawStamp:st.drawStamp,
-      banner:st.banner,qj:st.qj,
+      banner:st.banner,qj:st.qj,fx:st.introPts&&st.introPts.fx?st.introPts.fx:null,
       qcm:q?{opts:q.opts,closed:q.closed,correct:q.closed?q.correct:-1,answered:Object.keys(q.answers).map(Number),picks:q.closed?Object.fromEntries(Object.entries(q.answers).map(([k,a])=>[k,a.i])):{} ,gain:q.gain}:null,
       wager:w?{phase:w.phase,bets:w.phase==='bet'?Object.fromEntries(Object.keys(w.bets).map(k=>[k,'?'])):w.bets}:null});
   }
@@ -3153,7 +3154,7 @@ function TV(){
       mid=`<div class="sub">${q.closed?'La bonne réponse était…':'❓ QCM — une réponse par équipe'}</div><div id="tchr" class="huge" style="font-size:7vh"></div><div class="qtv">${q.opts.map((o,i)=>{ let cl='qopt Q'+'ABCD'[i]; if(q.closed) cl+=i===q.correct?' good':' dim'; const tags=q.closed?Object.entries(q.picks).filter(([,v])=>v===i).map(([k])=>`<span style="--c:${S.teams[k].color}"></span>`).join(''):''; return `<div class="${cl}"><span class="L">${'ABCD'[i]}</span><span>${esc(o)}</span><span class="tags">${tags}</span></div>`; }).join('')}</div>
         <div class="sub">${q.closed?S.teams.map((t,i)=>q.gain[i]?`${esc(t.name)} ${q.gain[i]}`:'').filter(Boolean).join(' · '):`Ont répondu : ${q.answered.map(i=>esc(S.teams[i].name)).join(', ')||'personne pour l\'instant'}`}</div>`;
     } else if(S.answer) mid=`<div class="answer"><div class="sub">La réponse était…</div><div class="huge gold">${esc(S.answer.t)}</div><div class="mid">${esc(S.answer.a)} · ${S.answer.y}</div></div>`;
-    else mid=`<div class="sub">${esc(S.round)}</div><div class="mid">Titre n°${S.trackNo}</div><div id="tchr" class="huge"></div>${S.status==='open'?'<div class="mid" style="color:var(--ok)">🔓 Buzzers ouverts !</div>':''}${S.blocked.length?`<div class="sub">Bloquées : ${S.blocked.map(i=>esc(S.teams[i].name)).join(', ')}</div>`:''}`;
+    else mid=`<div class="sub">${esc(S.round)}</div><div class="mid">Titre n°${S.trackNo}</div>${S.fx?`<div class="mid" style="color:var(--rose)">⚡ ${S.fx==='rev'?'À l\'envers':'Version accélérée ×'+S.fx} !</div>`:''}<div id="tchr" class="huge"></div>${S.status==='open'?'<div class="mid" style="color:var(--ok)">🔓 Buzzers ouverts !</div>':''}${S.blocked.length?`<div class="sub">Bloquées : ${S.blocked.map(i=>esc(S.teams[i].name)).join(', ')}</div>`:''}`;
     tv.innerHTML=LOGO()+`<div class="stage">${mid}</div>`+scores()+(S.status==='buzzed'&&S.buzz?`<div class="buzzfull" style="--c:${S.teams[S.buzz.team].color}"><div class="mid">🔔 BUZZ !</div><div class="huge">${esc(S.buzz.name)}</div><div class="mid">${esc(S.teams[S.buzz.team].name)}</div></div>`:'');
     // quand le clip est affiché, on laisse juste un bandeau réponse en bas
     tv.style.opacity=ytl.classList.contains('show')&&S.answer&&!S.qcm?'0':'1';
