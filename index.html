@@ -3171,7 +3171,9 @@ function Host(){
   const ytOv=ls.get('lbt-yt',{});
   const bc=('BroadcastChannel' in window)?new BroadcastChannel('lbt-tv'):null;
   let tvBeat=0; const tvAlive=()=>Date.now()-tvBeat<3000;
-  if(bc) bc.onmessage=e=>{ const d=e.data||{}; if(d.type==='hello'){ tvBeat=Date.now(); pushTV(); setTimeout(preloadCur,1500); } else if(d.type==='tvalive'){ tvBeat=Date.now(); } else if(d.type==='yterr') onYtErr(d); else if(d.type==='ytprep') onPrep(d); };
+  const TAB=rid(6); let released=false;
+  if(bc) setTimeout(()=>bc.postMessage({type:'claim',tab:TAB}),0);
+  if(bc) bc.onmessage=e=>{ const d=e.data||{}; if(d.type==='claim'&&d.tab!==TAB){ released=true; try{peer&&peer.destroy();}catch(err){} document.body.insertAdjacentHTML('beforeend','<div class="modal"><div class="box">'+LOGO()+'<b>La console a été ouverte dans un autre onglet.</b><p class="mut">Cet onglet est en pause pour ne pas perturber le jeu.</p><button class="btn rose" onclick="location.reload()">Reprendre la main ici</button></div></div>'); return; } if(d.type==='hello'){ tvBeat=Date.now(); pushTV(); setTimeout(preloadCur,1500); } else if(d.type==='tvalive'){ tvBeat=Date.now(); } else if(d.type==='yterr') onYtErr(d); else if(d.type==='ytprep') onPrep(d); };
   document.addEventListener('pointerdown',()=>ac(),{once:true}); setTimeout(hqWarm,1500);
 
   app.innerHTML=`<div class="sparkle"></div><div class="host">
@@ -3435,8 +3437,8 @@ function Host(){
     peer.on('connection',c=>{ c.on('data',d=>onData(c,d)); c.on('close',()=>onClose(c)); c.on('error',()=>onClose(c)); });
     peer.on('disconnected',()=>{ netOk=false; net='Reconnexion…'; renderNet(); setTimeout(()=>{ if(peer.disconnected&&!peer.destroyed) peer.reconnect(); },1500); });
     peer.on('error',e=>{
-      if(e.type==='unavailable-id'){ netOk=false; net='Plateau déjà ouvert ailleurs ? nouvel essai…'; renderNet(); peer.destroy(); if(++tries<10) setTimeout(startPeer,3000); else { net='Fermez les autres onglets animateur puis rechargez'; renderNet(); } }
-      else if(e.type!=='peer-unavailable'){ netOk=false; net='Reconnexion…'; renderNet(); if(peer.destroyed) setTimeout(startPeer,3000); }
+      if(e.type==='unavailable-id'){ netOk=false; tries++; net=tries<3?'Connexion…':'Console déjà ouverte sur un autre appareil : fermez-la, reconnexion automatique'; renderNet(); peer.destroy(); if(!released) setTimeout(startPeer,3000); }
+      else if(e.type!=='peer-unavailable'){ netOk=false; net='Reconnexion…'; renderNet(); if(peer.destroyed&&!released) setTimeout(startPeer,3000); }
     });
   }
   function onData(c,d){
