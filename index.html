@@ -156,8 +156,8 @@ a.btn{color:inherit;text-decoration:none;display:inline-flex;align-items:center}
 .mini-in{background:#00000040;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:.45rem .5rem;font-size:.8rem;min-width:0}
 details.cfg summary{cursor:pointer;color:var(--mut);font-size:.85rem}
 details.cfg .hrow{margin-top:8px}
-#ytlocal{width:100%;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#000;display:none}
-#ytlocal.on{display:block}
+#ytlocal{position:fixed;right:0;bottom:0;width:240px;height:135px;opacity:.01;pointer-events:none;z-index:-1;overflow:hidden}
+#ytlocal.on{position:static;width:100%;height:auto;aspect-ratio:16/9;opacity:1;pointer-events:auto;z-index:auto;border-radius:12px;background:#000}
 .srcb{font-size:.75rem}
 .btn.sm{padding:.5rem .7rem;font-size:.8rem}
 .btn.hl{outline:3px solid #fff}
@@ -2650,12 +2650,22 @@ function makeYT(elId,onEvt){
       onError:e=>{ onEvt&&onEvt({type:'yterr',code:e.data,id:cur&&cur.id}); },
       onStateChange:e=>{ if(e.data===1&&durWanted!=null){ clearTimeout(stopT); const d=durWanted; durWanted=null; stopT=setTimeout(()=>{ try{p.pauseVideo();}catch(err){} onEvt&&onEvt({type:'ytdone'}); },d*1000); } onEvt&&onEvt({type:'ytstate',s:e.data}); }}}); });
   const run=f=>{ if(ready) f(); else q.push(f); };
+  let prep=null, prepT=null;
+  function stopPrep(){ clearInterval(prepT); prepT=null; }
   return {
-    play(id,start=0,{dur=null,rate=1}={}){ run(()=>{ clearTimeout(stopT); durWanted=dur; cur={id,start}; p.loadVideoById({videoId:id,startSeconds:start}); try{p.setPlaybackRate(rate);}catch(e){} p.unMute(); p.setVolume(100); }); },
+    // Charge la vidéo en muet et la laisse tourner jusqu'à la fin de la pub, puis la met en pause au point de départ
+    preload(id,start=0){ run(()=>{ stopPrep(); clearTimeout(stopT); durWanted=null; prep={id,start,ok:false}; cur={id,start}; p.mute(); p.loadVideoById({videoId:id,startSeconds:start}); const t0=Date.now();
+      prepT=setInterval(()=>{ let ct=0, stt=-1; try{ ct=p.getCurrentTime(); stt=p.getPlayerState(); }catch(e){}
+        if(stt===1&&ct>start+0.4){ stopPrep(); p.pauseVideo(); p.seekTo(start,true); prep.ok=true; onEvt&&onEvt({type:'ytprep',id,ok:true}); }
+        else if(Date.now()-t0>90000){ stopPrep(); onEvt&&onEvt({type:'ytprep',id,ok:false}); } },300);
+      onEvt&&onEvt({type:'ytprep',id,ok:false,loading:true}); }); },
+    play(id,start=0,{dur=null,rate=1}={}){ run(()=>{ clearTimeout(stopT); durWanted=dur; cur={id,start};
+      if(prep&&prep.id===id&&prep.ok){ stopPrep(); p.seekTo(start,true); try{p.setPlaybackRate(rate);}catch(e){} p.unMute(); p.setVolume(100); p.playVideo(); return; }
+      stopPrep(); prep=null; p.loadVideoById({videoId:id,startSeconds:start}); try{p.setPlaybackRate(rate);}catch(e){} p.unMute(); p.setVolume(100); }); },
     pause(){ run(()=>{ clearTimeout(stopT); durWanted=null; p.pauseVideo(); }); },
     resume(){ run(()=>{ p.playVideo(); }); },
-    stop(){ run(()=>{ clearTimeout(stopT); durWanted=null; p.stopVideo(); }); },
-    restart(){ run(()=>{ if(cur){ p.seekTo(cur.start,true); p.playVideo(); } }); },
+    stop(){ run(()=>{ clearTimeout(stopT); durWanted=null; if(prep&&prep.ok){ p.pauseVideo(); p.seekTo(prep.start,true); p.mute(); } else if(!prepT){ p.stopVideo(); } }); },
+    restart(){ run(()=>{ if(cur){ p.seekTo(cur.start,true); p.unMute(); p.playVideo(); } }); },
     state(){ try{ return p?p.getPlayerState():-1; }catch(e){ return -1; } }
   };
 }
@@ -2808,7 +2818,7 @@ function Host(){
   const ytOv=ls.get('lbt-yt',{});
   const bc=('BroadcastChannel' in window)?new BroadcastChannel('lbt-tv'):null;
   let tvBeat=0; const tvAlive=()=>Date.now()-tvBeat<3000;
-  if(bc) bc.onmessage=e=>{ const d=e.data||{}; if(d.type==='hello'){ tvBeat=Date.now(); pushTV(); } else if(d.type==='tvalive'){ tvBeat=Date.now(); } else if(d.type==='yterr') onYtErr(d); else if(d.type==='ytdone') {} };
+  if(bc) bc.onmessage=e=>{ const d=e.data||{}; if(d.type==='hello'){ tvBeat=Date.now(); pushTV(); setTimeout(preloadCur,1500); } else if(d.type==='tvalive'){ tvBeat=Date.now(); } else if(d.type==='yterr') onYtErr(d); else if(d.type==='ytprep') onPrep(d); };
   document.addEventListener('pointerdown',()=>ac(),{once:true});
 
   app.innerHTML=`<div class="sparkle"></div><div class="host">
@@ -2830,7 +2840,7 @@ function Host(){
   </div><div id="modal"></div>`;
 
   // ---------- Musique ----------
-  const ytLocal=makeYT('ytlp',d=>{ if(d.type==='yterr') onYtErr(d); });
+  const ytLocal=makeYT('ytlp',d=>{ if(d.type==='yterr') onYtErr(d); if(d.type==='ytprep') onPrep(d); });
   const MP3={files:{},bufs:{},src:null,key:null,t0:0,off:0,rate:1,rev:false,paused:false,stopT:null,
     async buf(key,rev){ const k=key+(rev?':r':''); if(this.bufs[k]) return this.bufs[k]; let b=this.bufs[key]; if(!b){ b=await ac().decodeAudioData(await this.files[key].arrayBuffer()); this.bufs[key]=b; }
       if(!rev) return b; const r=ac().createBuffer(b.numberOfChannels,b.length,b.sampleRate); for(let c=0;c<b.numberOfChannels;c++){ const s=b.getChannelData(c), d=r.getChannelData(c); for(let i=0,n=s.length;i<n;i++) d[i]=s[n-1-i]; } return this.bufs[k]=r; },
@@ -2847,7 +2857,11 @@ function Host(){
   const ytOf=(r=st.round,k=st.track)=>{ const o=ytOv[tkey(r,k)]; return (o&&o.yt)||PLAYLIST[r].tracks[k].yt||null; };
   const startOf=(r=st.round,k=st.track)=>{ const o=ytOv[tkey(r,k)]; return (o&&o.s!=null)?o.s:(PLAYLIST[r].tracks[k].s||0); };
   let musicSrc=null; // 'mp3' | 'yt'
-  function yt(){ return tvAlive()?{play:(id,s,o)=>bc.postMessage({type:'yt',cmd:'play',id,start:s,...o}),pause:()=>bc.postMessage({type:'yt',cmd:'pause'}),resume:()=>bc.postMessage({type:'yt',cmd:'resume'}),stop:()=>bc.postMessage({type:'yt',cmd:'stop'}),restart:()=>bc.postMessage({type:'yt',cmd:'restart'})}:ytLocal; }
+  let prepState={id:null,ok:false,loading:false};
+  function onPrep(d){ prepState={id:d.id,ok:!!d.ok,loading:!!d.loading}; const el=$('#prep'); if(el) el.innerHTML=prepLabel(); }
+  function prepLabel(){ const id=ytOf(); if(MP3.files[tkey()]||!id) return ''; if(prepState.id!==id) return '⏳ Préparation…'; return prepState.ok?'✅ Prêt, sans pub':(prepState.loading?'⏳ La pub passe en silence…':'⚠️ Préparation impossible'); }
+  function preloadCur(){ const id=ytOf(); if(!id||MP3.files[tkey()]) return; prepState={id,ok:false,loading:true}; yt().preload(id,startOf()); }
+  function yt(){ return tvAlive()?{preload:(id,s)=>bc.postMessage({type:'yt',cmd:'preload',id,start:s}),play:(id,s,o)=>bc.postMessage({type:'yt',cmd:'play',id,start:s,...o}),pause:()=>bc.postMessage({type:'yt',cmd:'pause'}),resume:()=>bc.postMessage({type:'yt',cmd:'resume'}),stop:()=>bc.postMessage({type:'yt',cmd:'stop'}),restart:()=>bc.postMessage({type:'yt',cmd:'restart'})}:ytLocal; }
   function music(cmd,o={}){
     const k=tkey(), has=!!MP3.files[k], id=ytOf();
     if(cmd==='play'){ stopAll(); if(has&&!o.forceYT){ musicSrc='mp3'; MP3.play(k,o.mp3Start??0,o); } else if(id){ if(o.rev){ alert('L\'effet « à l\'envers » nécessite le MP3 de ce titre.'); return; } musicSrc='yt'; showLocal(!tvAlive()); yt().play(id,startOf(),{dur:o.dur||null,rate:o.rate||1}); } else { alert('Aucune musique pour ce titre : ajoutez un lien YouTube (⚙️ Réglages) ou un MP3.'); return; } }
@@ -2855,7 +2869,7 @@ function Host(){
     else if(cmd==='resume'){ if(musicSrc==='mp3') MP3.resume(); else if(musicSrc==='yt') yt().resume(); }
     else if(cmd==='stop') stopAll();
   }
-  function stopAll(){ MP3.stop(); try{ ytLocal.stop(); }catch(e){} if(bc) bc.postMessage({type:'yt',cmd:'stop'}); musicSrc=null; }
+  function stopAll(){ MP3.stop(); if(musicSrc==='yt'){ try{ ytLocal.stop(); }catch(e){} if(bc) bc.postMessage({type:'yt',cmd:'stop'}); } musicSrc=null; }
   function showLocal(on){ $('#ytlocal').classList.toggle('on',!!on); }
   function clip(){ const id=ytOf(); if(!id) return; MP3.stop(); musicSrc='yt'; if(tvAlive()){ bc.postMessage({type:'yt',cmd:'clip',id,start:startOf()}); } else { showLocal(true); ytLocal.play(id,startOf()); } }
   function onYtErr(d){ const box=$('#yterr'); if(box) box.textContent='⚠️ Cette vidéo ne peut pas être lue ici (code '+d.code+'). Collez un autre lien YouTube dans ⚙️ Réglages du titre, ou utilisez un MP3.'; }
@@ -2905,7 +2919,7 @@ function Host(){
     $('#rule').innerHTML=`<b>${esc(R.name)}</b><br>${esc(R.rule)}`;
     const ytS='https://www.youtube.com/results?search_query='+encodeURIComponent(T.a+' '+T.t);
     const ip=st.introPts;
-    $('#fiche').innerHTML=`<div class="hrow" style="justify-content:space-between"><span class="pill">Titre ${st.track+1} / ${R.tracks.length}</span><span class="pill srcb">${hasMp3?'🎵 MP3':id?'▶ YouTube':'⚠️ Pas de musique'}</span><span class="pill">${st.revealed?'✅ Révélé':'🙈 Masqué'} sur la TV</span></div>
+    $('#fiche').innerHTML=`<div class="hrow" style="justify-content:space-between"><span class="pill">Titre ${st.track+1} / ${R.tracks.length}</span><span class="pill srcb">${hasMp3?'🎵 MP3':id?'▶ YouTube <span id="prep">'+prepLabel()+'</span>':'⚠️ Pas de musique'}</span><span class="pill">${st.revealed?'✅ Révélé':'🙈 Masqué'} sur la TV</span></div>
       <div class="${peek?'':'hidden'}"><div class="ans">${esc(T.t)}</div><div style="font-weight:700">${esc(T.a)} · ${T.y}</div><div class="mut" style="font-size:.9rem;margin-top:6px">💡 ${esc(T.n)}</div></div>
       <div class="hrow"><button class="btn sm" id="pk">${peek?'🙈 Masquer':'👁 Voir la fiche'}</button></div>
       <div class="hrow"><button class="btn rose" id="mgo">▶ Extrait + buzzers</button><button class="btn sm" id="mpl">▶ Lecture</button><button class="btn sm" id="mpa">⏸ Pause</button><button class="btn sm" id="mre">⏯ Reprendre</button><button class="btn sm" id="mst">⏹ Stop</button></div>
@@ -2932,7 +2946,7 @@ function Host(){
   $('#tabs').onclick=e=>{ const b=e.target.closest('[data-r]'); if(b){ st.round=+b.dataset.r; st.track=0; resetQ(); commit(); } };
   $('#tlist').onclick=e=>{ const b=e.target.closest('[data-k]'); if(b){ st.track=+b.dataset.k; resetQ(); commit(); } };
   function goTrack(d){ let r=st.round, k=st.track+d; if(k>=PLAYLIST[r].tracks.length){ if(r<PLAYLIST.length-1){ r++; k=0; SFX.finManche(); } else k=PLAYLIST[r].tracks.length-1; } if(k<0){ if(r>0){ r--; k=PLAYLIST[r].tracks.length-1; } else k=0; } st.round=r; st.track=k; resetQ(); commit(); }
-  function resetQ(){ stopAll(); showLocal(false); if(bc) bc.postMessage({type:'yt',cmd:'hide'}); st.revealed=false; st.buzz=null; st.blocked=[]; st.qj={x2:[],chance:[],bloc:null}; st.introPts=null; if(st.qcm) st.qcm=null; if(st.status!=='lobby') st.status='closed'; timer=null; if(st.screen==='lobby'||st.screen==='draw') st.screen='game'; }
+  function resetQ(){ stopAll(); showLocal(false); if(bc) bc.postMessage({type:'yt',cmd:'hide'}); st.revealed=false; st.buzz=null; st.blocked=[]; st.qj={x2:[],chance:[],bloc:null}; st.introPts=null; if(st.qcm) st.qcm=null; if(st.status!=='lobby') st.status='closed'; timer=null; if(st.screen==='lobby'||st.screen==='draw') st.screen='game'; setTimeout(preloadCur,300); }
 
   // ---------- Buzzers
   function teamsWithPlayers(){ const s=new Set(); Object.values(st.players).forEach(p=>{ if(p.team!=null&&p.on) s.add(p.team); }); return s.size||4; }
@@ -3090,7 +3104,7 @@ function Host(){
     $('#modal').innerHTML=`<div class="modal" id="mq"><div class="box">${LOGO()}<div class="qr">${qrImg(u,8)}</div><b>Scannez avec l'appareil photo</b><div class="url">${esc(u)}</div><button class="btn rose" id="cq">Fermer</button></div></div>`;
     $('#cq').onclick=()=>$('#modal').innerHTML=''; $('#mq').onclick=e=>{ if(e.target.id==='mq') $('#modal').innerHTML=''; };
   }
-  startPeer(); renderAll(); pushTV();
+  startPeer(); renderAll(); pushTV(); setTimeout(preloadCur,2500);
   window.addEventListener('beforeunload',()=>{ try{peer.destroy();}catch(e){} });
 }
 
@@ -3107,7 +3121,8 @@ function TV(){
   bc.onmessage=e=>{ const d=e.data||{};
     if(d.type==='state'){ S=d; tl=S.timer; tAt=Date.now(); render(); }
     else if(d.type==='yt'){
-      if(d.cmd==='play'){ ytl.classList.remove('show'); player.play(d.id,d.start||0,{dur:d.dur,rate:d.rate||1}); }
+      if(d.cmd==='preload'){ ytl.classList.remove('show'); player.preload(d.id,d.start||0); }
+      else if(d.cmd==='play'){ ytl.classList.remove('show'); player.play(d.id,d.start||0,{dur:d.dur,rate:d.rate||1}); }
       else if(d.cmd==='clip'){ ytl.classList.add('show'); player.play(d.id,d.start||0); }
       else if(d.cmd==='pause') player.pause(); else if(d.cmd==='resume') player.resume(); else if(d.cmd==='restart') player.restart();
       else if(d.cmd==='stop'){ player.stop(); ytl.classList.remove('show'); }
