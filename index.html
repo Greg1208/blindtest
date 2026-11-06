@@ -2717,6 +2717,66 @@ SFX.joker=function(){ noise(0,.5,.25,1200,.5,'bandpass'); [N.C5,N.G5,N.C6].forEa
 SFX.qcm=function(){ [N.E5,N.G5,N.B5].forEach((f,i)=>tone(f,i*.1,.25,'triangle',.18)); };
 SFX.pop=function(){ tone(900,0,.08,'sine',.12,1400); };
 
+// ===== Sons « haute qualité » : pré-calculés hors ligne, stéréo + réverbération de salle =====
+const HQ={cache:{},pending:{},
+  async get(key,dur,build,wetAmt=.28){
+    if(this.cache[key]) return this.cache[key]; if(this.pending[key]) return this.pending[key];
+    this.pending[key]=(async()=>{ const sr=44100, oc=new OfflineAudioContext(2,Math.ceil(sr*dur),sr);
+      const bus=oc.createGain(), dry=oc.createGain(), wet=oc.createGain(), cv=oc.createConvolver();
+      wet.gain.value=wetAmt; cv.buffer=hqImpulse(oc,2.4); bus.connect(dry); bus.connect(wet); dry.connect(oc.destination); wet.connect(cv); cv.connect(oc.destination);
+      build(oc,bus); const b=await oc.startRendering(); hqNorm(b,.92); return this.cache[key]=b; })();
+    return this.pending[key];
+  },
+  async play(key,dur,build,vol=1,wet){ const b=await this.get(key,dur,build,wet); const c=ac(), s=c.createBufferSource(), g=c.createGain(); s.buffer=b; g.gain.value=vol; s.connect(g); g.connect(MASTER); s.start(); }
+};
+function hqImpulse(oc,sec){ const n=Math.floor(oc.sampleRate*sec), b=oc.createBuffer(2,n,oc.sampleRate);
+  for(let ch=0;ch<2;ch++){ const d=b.getChannelData(ch); for(let i=0;i<n;i++){ const t=i/n; d[i]=(Math.random()*2-1)*Math.pow(1-t,3.2)*(i<oc.sampleRate*.01?i/(oc.sampleRate*.01):1); } } return b; }
+function hqNorm(b,target){ let pk=0; for(let ch=0;ch<b.numberOfChannels;ch++){ const d=b.getChannelData(ch); for(let i=0;i<d.length;i++){ const v=Math.abs(d[i]); if(v>pk) pk=v; } } if(pk>0){ const k=target/pk; for(let ch=0;ch<b.numberOfChannels;ch++){ const d=b.getChannelData(ch); for(let i=0;i<d.length;i++) d[i]*=k; } } }
+function hqOut(oc,dest,pan,vol){ const g=oc.createGain(); g.gain.value=vol; const p=oc.createStereoPanner?oc.createStereoPanner():null; if(p){ p.pan.value=pan; g.connect(p); p.connect(dest); } else g.connect(dest); return g; }
+// --- claquement de mains réaliste
+function hqClapBufs(oc){ if(oc._claps) return oc._claps; const sr=oc.sampleRate; oc._claps=[];
+  for(let v=0;v<8;v++){ const n=Math.floor(sr*.07), b=oc.createBuffer(1,n,sr), d=b.getChannelData(0); const t1=.0015+Math.random()*.003, dec=.006+Math.random()*.01;
+    for(let i=0;i<n;i++){ const t=i/sr; let e=t<t1?t/t1:Math.exp(-(t-t1)/dec); if(t>t1&&t<t1+.004) e*=1+.6*Math.random(); d[i]=(Math.random()*2-1)*e; } oc._claps.push(b); }
+  return oc._claps; }
+function hqClap(oc,dest,t,pan,vol){ const s=oc.createBufferSource(); const cb=hqClapBufs(oc); s.buffer=cb[Math.floor(Math.random()*cb.length)];
+  const f=oc.createBiquadFilter(); f.type='bandpass'; f.frequency.value=900+Math.random()*1500; f.Q.value=.9+Math.random()*.8;
+  const hp=oc.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=350;
+  s.connect(f); f.connect(hp); hp.connect(hqOut(oc,dest,pan,vol)); s.start(t); }
+function hqApplause(oc,dest,dur,people=32,intensity=1){
+  for(let p=0;p<people;p++){ const pan=Math.random()*1.8-.9, rate=3.6+Math.random()*2.2, vol=(.25+Math.random()*.35)*intensity; let t=.05+Math.random()*.45;
+    while(t<dur-.2){ const sw=Math.min(1,t/.6), fade=Math.max(0,Math.min(1,(dur-.25-t)/1.2)); hqClap(oc,dest,t,pan,vol*sw*fade); t+=1/rate*(0.85+Math.random()*.3); } }
+}
+// --- voix de foule (synthèse par formants)
+const VOW={oo:[[330,1],[780,.5],[2400,.08]],aa:[[800,1],[1250,.7],[2700,.15]],ah:[[700,1],[1100,.6],[2600,.12]],oh:[[480,1],[880,.55],[2500,.1]],ee:[[300,1],[2300,.45],[3000,.15]]};
+function hqVoice(oc,dest,t,d,f0,{vowel='aa',glideTo=1,peakAt=.6,vol=.2,pan=0,vib=.015,breath=.25,att=.25,rel=.5}={}){
+  const o=oc.createOscillator(); o.type='sawtooth'; const fr=o.frequency; fr.setValueAtTime(f0,t);
+  if(glideTo!==1){ fr.linearRampToValueAtTime(f0*(glideTo>1?glideTo:1),t+d*peakAt); fr.linearRampToValueAtTime(f0*(glideTo>1?1.02:glideTo),t+d); }
+  const l=oc.createOscillator(), lg=oc.createGain(); l.frequency.value=4.5+Math.random()*2; lg.gain.value=f0*vib; l.connect(lg); lg.connect(fr);
+  const nz=oc.createBufferSource(); nz.buffer=hqNoiseBuf(oc); nz.loop=true; const ng=oc.createGain(); ng.gain.value=breath;
+  const env=oc.createGain(); env.gain.setValueAtTime(0,t); env.gain.linearRampToValueAtTime(vol,t+att); env.gain.setValueAtTime(vol,t+Math.max(att,d-rel)); env.gain.linearRampToValueAtTime(0,t+d);
+  const sum=oc.createGain(); VOW[vowel].forEach(([F,a])=>{ const bp=oc.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=F*(f0>180?1.12:1); bp.Q.value=F<1000?7:11; const g=oc.createGain(); g.gain.value=a; o.connect(bp); nz.connect(ng); ng.connect(bp); bp.connect(g); g.connect(sum); });
+  const lp=oc.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=3200; sum.connect(lp); lp.connect(env); env.connect(hqOut(oc,dest,pan,1));
+  o.start(t); l.start(t); nz.start(t,Math.random()); o.stop(t+d+.05); l.stop(t+d+.05); nz.stop(t+d+.05);
+}
+function hqNoiseBuf(oc){ if(oc._nz) return oc._nz; const b=oc.createBuffer(1,oc.sampleRate*2,oc.sampleRate), d=b.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1; return oc._nz=b; }
+function hqCrowd(oc,dest,d,vowel,glideTo,n=22){ for(let i=0;i<n;i++){ const fem=Math.random()<.6, f0=(fem?190+Math.random()*80:100+Math.random()*45); hqVoice(oc,dest,Math.random()*.25,d-Math.random()*.3,f0,{vowel,glideTo:glideTo*(0.95+Math.random()*.1),vol:.12+Math.random()*.08,pan:Math.random()*1.8-.9,att:.2+Math.random()*.2,rel:.6}); } }
+function hqLaugh(oc,dest,n=8){ for(let k=0;k<n;k++){ const fem=Math.random()<.65, base=fem?250+Math.random()*90:130+Math.random()*50, pan=Math.random()*1.6-.8; let t=Math.random()*.6; const syl=6+Math.floor(Math.random()*5), on=.075+Math.random()*.03, off=.06+Math.random()*.04;
+  for(let s=0;s<syl;s++){ hqVoice(oc,dest,t,on,base*(1-s*.025)*(s===0?1.15:1),{vowel:Math.random()<.7?'ah':'ee',vol:.2*(1-s*.06),pan,att:.012,rel:.03,breath:.9,vib:.03}); t+=on+off; } } }
+function hqKick(oc,dest,t,vol=1){ const o=oc.createOscillator(), g=oc.createGain(); o.frequency.setValueAtTime(130,t); o.frequency.exponentialRampToValueAtTime(42,t+.18); g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(.001,t+.45); o.connect(g); g.connect(dest); o.start(t); o.stop(t+.5);
+  const s=oc.createBufferSource(); s.buffer=hqNoiseBuf(oc); const f=oc.createBiquadFilter(); f.type='lowpass'; f.frequency.value=900; const ng=oc.createGain(); ng.gain.setValueAtTime(vol*.4,t); ng.gain.exponentialRampToValueAtTime(.001,t+.06); s.connect(f); f.connect(ng); ng.connect(dest); s.start(t); s.stop(t+.08); }
+function hqWhistle(oc,dest,t,pan){ const o=oc.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(1700,t); o.frequency.linearRampToValueAtTime(2700,t+.25); o.frequency.linearRampToValueAtTime(2300,t+.6); const g=oc.createGain(); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(.12,t+.05); g.gain.linearRampToValueAtTime(0,t+.65); o.connect(g); g.connect(hqOut(oc,dest,pan,1)); o.start(t); o.stop(t+.7); }
+// --- remplace les anciennes versions (moins bonnes) des sons d'ambiance
+SFX.applause=(dur=3.5)=>HQ.play('app'+Math.round(dur*10),dur+1.2,(oc,b)=>hqApplause(oc,b,dur),.95);
+const HQS={
+  applause:()=>SFX.applause(3.5),
+  ovation:()=>HQ.play('ovation',6,(oc,b)=>{ hqApplause(oc,b,4.8,44,1.2); [0.4,1.1,1.9,2.8].forEach(t=>hqWhistle(oc,b,t,Math.random()*1.4-.7)); for(let i=0;i<10;i++) hqVoice(oc,b,.3+Math.random()*1.5,1.2,200+Math.random()*120,{vowel:'oo',glideTo:1.35,vol:.08,pan:Math.random()*1.6-.8}); }),
+  ooh:()=>HQ.play('ooh',3.2,(oc,b)=>hqCrowd(oc,b,2.3,'oo',1.28),1,.32),
+  aah:()=>HQ.play('aah',3,(oc,b)=>hqCrowd(oc,b,2,'aa',.62),1,.32),
+  laugh:()=>HQ.play('laugh',3.4,(oc,b)=>hqLaugh(oc,b,9),1,.3),
+  stade:()=>HQ.play('stade',4.4,(oc,b)=>{ for(let r=0;r<3;r++){ const t=.05+r*1.2; hqKick(oc,b,t); hqKick(oc,b,t+.3); for(let p=0;p<18;p++) hqClap(oc,b,t+.6+(Math.random()*.03),Math.random()*1.8-.9,.5); } },1,.42)
+};
+function hqWarm(){ ['applause','ooh','aah','laugh','stade'].forEach((k,i)=>setTimeout(()=>{ if(k==='applause') HQ.get('app35',4.7,(oc,b)=>hqApplause(oc,b,3.5)); else if(k==='ooh') HQ.get('ooh',3.2,(oc,b)=>hqCrowd(oc,b,2.3,'oo',1.28),.32); else if(k==='aah') HQ.get('aah',3,(oc,b)=>hqCrowd(oc,b,2,'aa',.62),.32); else if(k==='laugh') HQ.get('laugh',3.4,(oc,b)=>hqLaugh(oc,b,9),.3); else HQ.get('stade',4.4,(oc,b)=>{ for(let r=0;r<3;r++){ const t=.05+r*1.2; hqKick(oc,b,t); hqKick(oc,b,t+.3); for(let p=0;p<18;p++) hqClap(oc,b,t+.6+(Math.random()*.03),Math.random()*1.8-.9,.5); } },.42); },300+i*400)); }
+
 // ===== Catalogue de 50 sons synthétisés =====
 function chord(fs,t,d,type='triangle',vol=.12){ fs.forEach(f=>tone(f,t,d,type,vol)); }
 function sweep(t,d,vol,f1,f2,q=2,type='bandpass'){ // bruit filtré avec balayage de fréquence (whoosh, scratch)
@@ -2775,12 +2835,12 @@ const SONS=[
   ['Révélation (harpe magique)',()=>{ const sc=[N.C4,N.E4,N.G4,N.C5,N.E5,N.G5,N.C6,N.E5*2,N.G5*2]; sc.forEach((f,i)=>tone(f,i*.06,1.2,'triangle',.12)); for(let i=0;i<14;i++) tone(3000+Math.random()*4000,.6+Math.random()*1,.25,'sine',.04); }]
  ]},
  {cat:'👏 Public & ambiance',items:[
-  ['Applaudissements',()=>SFX.applause(3.5)],
-  ['Ovation + sifflets',()=>{ SFX.applause(4.5); SFX.applause(4.5); [0.3,1.2,2.1].forEach(t=>vibTone(1800,t,.5,{type:'sine',vol:.1,rate:1,depth:0,slide:2600})); }],
-  ['« Ooooh » du public',()=>crowd(0,2,220,{slideTo:1.35,filt:600,vol:.05})],
-  ['« Aaaah » déçu',()=>crowd(0,1.8,300,{slideTo:0.6,filt:1100,vol:.05})],
-  ['Rires',()=>{ for(let k=0;k<4;k++){ const b=260+k*55; for(let i=0;i<6;i++){ const t=k*.12+i*.17+Math.random()*.03; vibTone(b*(1-i*.04),t,.12,{type:'sawtooth',vol:.07,rate:0.1,depth:0,filter:1000,q:2}); noise(t,.08,.04,1200,1); } } }],
-  ['Tambours de stade',()=>{ for(let r=0;r<3;r++){ const t=r*1.2; kick(t); kick(t+.3); clap(t+.6); } }],
+  ['Applaudissements',()=>HQS.applause()],
+  ['Ovation + sifflets',()=>HQS.ovation()],
+  ['« Ooooh » du public',()=>HQS.ooh()],
+  ['« Aaaah » déçu',()=>HQS.aah()],
+  ['Rires',()=>HQS.laugh()],
+  ['Tambours de stade',()=>HQS.stade()],
   ['Klaxon de supporters',()=>{ [[0,.2],[.3,.2],[.6,.9]].forEach(([t,d])=>{ tone(440,t,d,'sawtooth',.09); tone(554,t,d,'sawtooth',.08); tone(659,t,d,'square',.05); }); }],
   ['Pluie de confettis',()=>{ for(let i=0;i<40;i++) tone(2000+Math.random()*5000,Math.random()*2,.15,'sine',.05); noise(0,2,.05,9000,.5,'highpass'); }]
  ]},
@@ -3076,7 +3136,7 @@ function Host(){
   const bc=('BroadcastChannel' in window)?new BroadcastChannel('lbt-tv'):null;
   let tvBeat=0; const tvAlive=()=>Date.now()-tvBeat<3000;
   if(bc) bc.onmessage=e=>{ const d=e.data||{}; if(d.type==='hello'){ tvBeat=Date.now(); pushTV(); setTimeout(preloadCur,1500); } else if(d.type==='tvalive'){ tvBeat=Date.now(); } else if(d.type==='yterr') onYtErr(d); else if(d.type==='ytprep') onPrep(d); };
-  document.addEventListener('pointerdown',()=>ac(),{once:true});
+  document.addEventListener('pointerdown',()=>ac(),{once:true}); setTimeout(hqWarm,1500);
 
   app.innerHTML=`<div class="sparkle"></div><div class="host">
   <header>${LOGO()}<div class="hrow"><span class="pill" id="net"><span class="dot wait"></span>Connexion…</span><span class="pill" id="tvp"><span class="dot"></span>TV</span>
@@ -3152,7 +3212,7 @@ function Host(){
   $('#lesb').innerHTML=Object.entries(LES_MOMENTS).map(([k,m])=>`<button class="btn sm" data-les="${k}">${m.l}</button>`).join('');
   $('#lesb').onclick=e=>{ const b=e.target.closest('[data-les]'); if(b) leslie(b.dataset.les); };
   $('#lesb').insertAdjacentHTML('afterend','<div class="mut" id="lesleft" style="font-size:.75rem"></div>'); setTimeout(()=>renderLesLeft(),0);
-  function leslie(k,auto=false,sometimes=false){ if(auto&&!lesAuto) return; if(sometimes&&Math.random()>0.34) return; let v=lesNext(k); if(v==null){ if(auto) return; v=Math.floor(Math.random()*LES_MOMENTS[k].v.length); } const sn=LES_MOMENTS[k].v[v].s; if(!auto||k==='bravo'||k==='rate'){ if(sn&&FN[sn]) setTimeout(()=>FN[sn](),auto?700:150); else if(k==='apero'&&!auto) SFX.pub(); }
+  function leslie(k,auto=false,sometimes=false){ if(auto&&!lesAuto) return; if(sometimes&&Math.random()>0.34) return; let v=lesNext(k); if(v==null){ if(auto) return; v=Math.floor(Math.random()*LES_MOMENTS[k].v.length); } const sn=LES_MOMENTS[k].v[v].s; if(!auto||k==='bravo'||k==='rate'){ if(sn&&FN[sn]) setTimeout(()=>{ if(CUSTOM[sn]) playCustom(String(sn)); else FN[sn](); },auto?700:150); else if(k==='apero'&&!auto) SFX.pub(); }
     if(tvAlive()&&bc) bc.postMessage({type:'leslie',k,v}); else leslieShow(k,v); renderLesLeft(); }
   function renderLesLeft(){ const el=$('#lesleft'); if(el) el.textContent=`Restant : ${lesLeft('bravo')} bravo / ${lesLeft('rate')} raté (chaque animation max 2 fois)`; }
 
@@ -3161,7 +3221,22 @@ function Host(){
   const KEEP=[1,4,6,8,9,12,15,17,18,19,20,25,27,28,30,35,38,39,43,44];
   const FN=[]; let num=0; const groups=SONS.map(g=>({cat:g.cat,items:g.items.map(([l,f])=>{ num++; FN[num]=f; return {num,l}; }).filter(x=>KEEP.includes(x.num))})).filter(g=>g.items.length);
   $('#sfx').innerHTML=groups.map(g=>`<div style="grid-column:1/-1;font-size:.8rem;color:var(--or-l);font-weight:800;margin-top:4px">${g.cat}</div>`+g.items.map(x=>`<button class="btn" data-s="${x.num}">${esc(x.l)}</button>`).join('')).join('');
-  $('#sfx').onclick=e=>{ const b=e.target.closest('[data-s]'); if(b){ FN[+b.dataset.s](); } };
+  // Remplacement d'un son par un fichier (gardé dans ce navigateur, sur cet ordinateur)
+  const IDB={db:null,open(){ return this.db||(this.db=new Promise((res,rej)=>{ const r=indexedDB.open('lbt-sons',1); r.onupgradeneeded=()=>r.result.createObjectStore('f'); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); })); },
+    async put(k,v){ const db=await this.open(); return new Promise(r=>{ const tx=db.transaction('f','readwrite'); v==null?tx.objectStore('f').delete(k):tx.objectStore('f').put(v,k); tx.oncomplete=r; }); },
+    async all(){ const db=await this.open(); return new Promise(r=>{ const out={}; const tx=db.transaction('f'); const st=tx.objectStore('f'); const rq=st.openCursor(); rq.onsuccess=()=>{ const c=rq.result; if(c){ out[c.key]=c.value; c.continue(); } else r(out); }; }); } };
+  const CUSTOM={}; let replMode=false;
+  async function loadCustom(){ try{ const all=await IDB.all(); for(const [k,blob] of Object.entries(all)){ CUSTOM[k]={blob,buf:null}; } markCustom(); }catch(e){} }
+  function markCustom(){ document.querySelectorAll('#sfx [data-s]').forEach(b=>{ b.style.outline=CUSTOM[b.dataset.s]?'2px solid var(--or)':''; b.title=CUSTOM[b.dataset.s]?'Son remplacé par votre fichier':''; }); }
+  async function playCustom(k){ const c=CUSTOM[k]; if(!c.buf) c.buf=await ac().decodeAudioData(await c.blob.arrayBuffer()); const s=ac().createBufferSource(); s.buffer=c.buf; s.connect(MASTER); s.start(); }
+  $('#sfx').insertAdjacentHTML('afterend',`<div class="hrow"><button class="btn sm" id="repl">🔁 Remplacer un son par un fichier</button><span class="mut" id="replmsg" style="font-size:.75rem">Sons gratuits et libres : pixabay.com/fr/sound-effects ou mixkit.co</span><input type="file" id="replin" accept="audio/*" hidden></div>`);
+  let replKey=null;
+  $('#repl').onclick=()=>{ replMode=!replMode; $('#repl').classList.toggle('hl',replMode); $('#replmsg').textContent=replMode?'Cliquez sur le son à remplacer (encadré doré = déjà remplacé ; recliquez dessus pour revenir au son d\'origine).':'Sons gratuits et libres : pixabay.com/fr/sound-effects ou mixkit.co'; };
+  $('#replin').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if(!f||replKey==null) return; await IDB.put(replKey,f); CUSTOM[replKey]={blob:f,buf:null}; replMode=false; $('#repl').classList.remove('hl'); $('#replmsg').textContent='✅ Son remplacé et enregistré sur cet ordinateur.'; markCustom(); playCustom(replKey); };
+  $('#sfx').onclick=async e=>{ const b=e.target.closest('[data-s]'); if(!b) return; const k=b.dataset.s;
+    if(replMode){ if(CUSTOM[k]&&confirm('Revenir au son d\'origine pour ce bouton ?')){ await IDB.put(k,null); delete CUSTOM[k]; markCustom(); replMode=false; $('#repl').classList.remove('hl'); return; } replKey=k; $('#replin').click(); return; }
+    if(CUSTOM[k]) playCustom(k); else FN[+k](); };
+  loadCustom();
 
   // ---------- Écrans
   ['lobby','game','pub','podium'].forEach(s=>$('#bscr-'+s).onclick=()=>{ st.screen=s; if(s==='pub'){ stopAll(); SFX.pub(); setTimeout(()=>leslie('apero',true),1200); } if(s==='podium'){ stopAll(); SFX.victoire(); setTimeout(()=>leslie('reine',true),3200); } if(s==='game'&&st.status==='lobby') st.status='closed'; commit(); });
