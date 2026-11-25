@@ -3074,6 +3074,7 @@ function Landing(){
 function Player(){
   const hostId=Q.get('join');
   const me=ls.get('lbt-me',null)||{pid:rid(10),name:''};
+  const T0=Date.now(); setTimeout(()=>{ if(!S) render(); },12500);
   let S=null, conn=null, peer=null, connected=false, lastPong=0, retryT=null, drawSeen=ls.get('lbt-draw',0), pressed=false, timerLeft=null, timerAt=0, lastEmo=0, betVal=null, picking=false;
   app.innerHTML=`<div class="sparkle"></div><div class="player" id="pl"></div><div id="ov"></div>`;
   const pl=$('#pl');
@@ -3134,7 +3135,10 @@ function Player(){
   function render(){
     if(!me.name) return;
     const dot=`<span class="pill"><span class="dot ${connected?'on':'wait'}"></span>${connected?'Connecté':'Connexion…'}</span>`;
-    if(!S){ pl.innerHTML=`<div class="top"><span class="mini gold">Blind Test</span>${dot}</div><div class="center">${LOGO()}<p class="status">Connexion au plateau…</p><p class="mut">Restez sur cette page, ça arrive.</p></div>`; return; }
+    if(!S){ const slow=Date.now()-T0>12000, noRtc=!window.RTCPeerConnection;
+      pl.innerHTML=`<div class="top"><span class="mini gold">Blind Test</span>${dot}</div><div class="center">${LOGO()}<p class="status">Connexion au plateau…</p>${(slow||noRtc)?`<div class="rule" style="text-align:left;font-size:.95rem;line-height:1.5"><b>La connexion ne passe pas ?</b><br>1. Ouvrez ce lien dans <b>Chrome</b> (pas Samsung Internet, pas en navigation privée / mode secret).<br>2. Mettez le téléphone sur le <b>Wi-Fi de la maison</b>.<br>3. Rescannez le QR code.<br><button class="btn sm or" id="cp" style="margin-top:8px">📋 Copier le lien</button></div>`:'<p class="mut">Restez sur cette page, ça arrive.</p>'}</div>`;
+      const cp=$('#cp'); if(cp) cp.onclick=async()=>{ try{ await navigator.clipboard.writeText(location.href); cp.textContent='✅ Lien copié : collez-le dans Chrome'; }catch(e){ prompt('Copiez ce lien et collez-le dans Chrome :',location.href); } };
+      return; }
     const top=`<div class="top"><span class="mini gold">Blind Test · Leslie's Brunch</span>${dot}</div>`;
     const scores=`<div class="scores">${S.teams.map(t=>`<div style="--c:${t.color}">${esc(t.name)}<b>${t.score}</b></div>`).join('')}</div>`;
     const emo=`<div class="erow">${EMOJIS.map(e=>`<button data-e="${e}">${e}</button>`).join('')}</div>`;
