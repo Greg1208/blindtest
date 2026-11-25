@@ -3035,7 +3035,8 @@ const rid=n=>Array.from(crypto.getRandomValues(new Uint8Array(n)),b=>'abcdefghjk
 const LOGO=(cls='')=>`<div class="logo ${cls}"><div class="l1">Le Grand</div><div class="l2 gold">Blind Test</div><div class="l3">du LESLIE'S BRUNCH</div></div>`;
 function qrImg(url,cell=8){ const q=qrcode(0,'M'); q.addData(url); q.make(); return `<img alt="QR code" src="${q.createDataURL(cell,2)}">`; }
 // Relais de secours (MQTT public) quand la liaison directe WebRTC ne passe pas (certains Android)
-const MQ_URLS=['wss://broker.hivemq.com:8884/mqtt','wss://broker.emqx.io:8084/mqtt'];
+const MQ_URLS=['wss://mqtt.eclipseprojects.io:443/mqtt','wss://broker.hivemq.com:8884/mqtt','wss://broker.emqx.io:8084/mqtt'];
+const BUILD='251626';
 const MQ_TEST=Q.get('mq');
 function mqConnect(url){ return mqtt.connect(url,{clientId:'lbt_'+rid(10),keepalive:20,reconnectPeriod:2500,connectTimeout:7000,clean:true}); }
 const optLabel=t=>t.a==='Générique'?t.t:`${t.t} — ${t.a}`;
@@ -3089,7 +3090,8 @@ function Player(){
   const hostId=Q.get('join');
   const me=ls.get('lbt-me',null)||{pid:rid(10),name:''};
   const T0=Date.now(); setTimeout(()=>{ if(!S) render(); },12500);
-  let mq=null, usingMq=false;
+  let mq=null, usingMq=false; const DG={direct:'en cours',relais:'—'};
+  const diag=()=>`<p class="mut" style="font-size:.7rem;text-align:center;opacity:.7">v${BUILD} · direct : ${DG.direct} · relais : ${DG.relais}</p>`;
   let S=null, conn=null, peer=null, connected=false, lastPong=0, retryT=null, drawSeen=ls.get('lbt-draw',0), pressed=false, timerLeft=null, timerAt=0, lastEmo=0, betVal=null, picking=false;
   app.innerHTML=`<div class="sparkle"></div><div class="player" id="pl"></div><div id="ov"></div>`;
   const pl=$('#pl');
@@ -3115,9 +3117,10 @@ function Player(){
   function startMq(){
     if(usingMq||typeof mqtt==='undefined') return; usingMq=true; clearTimeout(retryT); try{ if(conn) conn.close(); }catch(e){} try{ peer.destroy(); }catch(e){}
     const urls=MQ_TEST?[MQ_TEST]:MQ_URLS; let idx=0;
-    const go=()=>{ const c=mqConnect(urls[idx%urls.length]); mq=c;
+    DG.direct='échec'; const go=()=>{ const u=urls[idx%urls.length]; DG.relais='essai '+(idx%urls.length+1)+'/'+urls.length; render(); const c=mqConnect(u); mq=c;
       const to=setTimeout(()=>{ if(!c.connected){ try{c.end(true);}catch(e){} idx++; go(); } },8000);
-      c.on('connect',()=>{ clearTimeout(to); c.subscribe(`lbt/${hostId}/p/${me.pid}`);
+      c.on('error',e=>{ DG.relais='erreur '+(idx%urls.length+1); });
+      c.on('connect',()=>{ clearTimeout(to); DG.relais='ouvert '+(idx%urls.length+1); render(); c.subscribe(`lbt/${hostId}/p/${me.pid}`);
         conn={open:true,mq:true,send:o=>c.publish(`lbt/${hostId}/in`,JSON.stringify(Object.assign({},o,{pid:me.pid,name:me.name}))),close(){}};
         conn.send({type:'hello'}); });
       c.on('message',(tp,buf)=>{ let d; try{ d=JSON.parse(buf.toString()); }catch(e){ return; } lastPong=Date.now(); if(!connected){ connected=true; } if(d&&d.type==='state') onState(d); });
@@ -3129,7 +3132,7 @@ function Player(){
     if(usingMq) return;
     if(conn){ try{conn.close();}catch(e){} }
     const c=conn=peer.connect('lbt-'+hostId,{reliable:true});
-    c.on('open',()=>{ if(c!==conn) return; connected=true; lastPong=Date.now(); c.send({type:'hello',pid:me.pid,name:me.name}); render(); });
+    c.on('open',()=>{ if(c!==conn) return; connected=true; DG.direct='OK'; lastPong=Date.now(); c.send({type:'hello',pid:me.pid,name:me.name}); render(); });
     c.on('data',d=>{ if(c!==conn) return; lastPong=Date.now(); if(d&&d.type==='state') onState(d); });
     c.on('close',()=>{ if(c!==conn) return; connected=false; render(); retry(2000); });
     c.on('error',()=>{ if(c!==conn) return; connected=false; render(); retry(2000); });
@@ -3165,7 +3168,7 @@ function Player(){
     if(!me.name) return;
     const dot=`<span class="pill"><span class="dot ${connected?'on':'wait'}"></span>${connected?'Connecté':'Connexion…'}</span>`;
     if(!S){ const slow=Date.now()-T0>12000, noRtc=!window.RTCPeerConnection;
-      pl.innerHTML=`<div class="top"><span class="mini gold">Blind Test</span>${dot}</div><div class="center">${LOGO()}<p class="status">Connexion au plateau…</p>${(slow||noRtc)?`<div class="rule" style="text-align:left;font-size:.95rem;line-height:1.5"><b>La connexion ne passe pas ?</b><br>1. Ouvrez ce lien dans <b>Chrome</b> (pas Samsung Internet, pas en navigation privée / mode secret).<br>2. Mettez le téléphone sur le <b>Wi-Fi de la maison</b>.<br>3. Rescannez le QR code.<br><button class="btn sm or" id="cp" style="margin-top:8px">📋 Copier le lien</button></div>`:'<p class="mut">Restez sur cette page, ça arrive.</p>'}</div>`;
+      pl.innerHTML=`<div class="top"><span class="mini gold">Blind Test</span>${dot}</div><div class="center">${LOGO()}<p class="status">Connexion au plateau…</p>${(slow||noRtc)?`<div class="rule" style="text-align:left;font-size:.95rem;line-height:1.5"><b>La connexion ne passe pas ?</b><br>1. Ouvrez ce lien dans <b>Chrome</b> (pas Samsung Internet, pas en navigation privée / mode secret).<br>2. Mettez le téléphone sur le <b>Wi-Fi de la maison</b>.<br>3. Rescannez le QR code.<br><button class="btn sm or" id="cp" style="margin-top:8px">📋 Copier le lien</button></div>`:'<p class="mut">Restez sur cette page, ça arrive.</p>'}${diag()}</div>`;
       const cp=$('#cp'); if(cp) cp.onclick=async()=>{ try{ await navigator.clipboard.writeText(location.href); cp.textContent='✅ Lien copié : collez-le dans Chrome'; }catch(e){ prompt('Copiez ce lien et collez-le dans Chrome :',location.href); } };
       return; }
     const top=`<div class="top"><span class="mini gold">Blind Test · Leslie's Brunch</span>${dot}</div>`;
@@ -3231,7 +3234,7 @@ function Player(){
 // ================= ANIMATEUR =================
 function Host(){
   let hostId=Q.get('hid')||ls.get('lbt-hostid',null); if(!hostId){ hostId=rid(8); ls.set('lbt-hostid',hostId); }
-  const joinURL=()=>location.origin+location.pathname+'?join='+hostId+(SRV?'&srv='+SRV:'')+(MQ_TEST?'&mq='+encodeURIComponent(MQ_TEST):'');
+  const joinURL=()=>location.origin+location.pathname+'?v='+BUILD+'&join='+hostId+(SRV?'&srv='+SRV:'')+(MQ_TEST?'&mq='+encodeURIComponent(MQ_TEST):'');
   const freshJ=()=>[0,1,2,3].map(()=>({x2:false,bloc:false,chance:false}));
   const fresh=()=>({teams:TEAMC.map(t=>({name:t.n,score:0})),players:{},status:'lobby',buzz:null,blocked:[],round:0,track:0,revealed:false,screen:'lobby',drawStamp:0,drawOrder:[],
     jokers:freshJ(),qj:{x2:[],chance:[],bloc:null},qcm:null,wager:null,banner:null,introPts:null});
